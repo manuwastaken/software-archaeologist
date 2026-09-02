@@ -1,4 +1,17 @@
+# Virtual Environment & Environment Variables
 .venv/
 .env
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+archaeon.db
+
+# Ingested Data & Cloned Repositories
+data/repos/
+
+# Python Cache & Testing
 __pycache__/
 *.pyc
+.pytest_cache/
