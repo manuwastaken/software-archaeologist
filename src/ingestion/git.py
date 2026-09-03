@@ -31,3 +31,17 @@ def git_extract_metadata(destination_path: str, repo: Repository):
     except Exception as e:
         print(f"Error extracting metadata: {e}")
         raise
+
+def locate_py(repo_path: str):
+    py_files = []
+    for root, dirs, files in os.walk(repo_path):
+        if '.git' in dirs:
+            dirs.remove('.git')
+        if '.venv' in dirs:
+            dirs.remove('.venv')
+        if '__pycache__' in dirs:
+            dirs.remove('__pycache__')
+        for file in files:
+            if file.endswith('.py'):
+                py_files.append(os.path.join(root, file))
+    return py_files

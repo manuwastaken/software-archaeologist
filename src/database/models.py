@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import String, Integer, DateTime, ForeignKey
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # 1. Base Class
 # All SQLAlchemy models must inherit from a DeclarativeBase class.
@@ -53,6 +53,8 @@ class Repository(Base):
         onupdate=lambda: datetime.now(timezone.utc)
     )
 
+    files: Mapped[list["File"]] = relationship(back_populates="repository", cascade="all, delete-orphan")
+
 
 # 3. Job Table
 # Tracks background tasks responsible for cloning & ingesting repositories.
@@ -94,3 +96,54 @@ class Job(Base):
         default=lambda: datetime.now(timezone.utc), 
         onupdate=lambda: datetime.now(timezone.utc)
     )
+
+class File(Base):
+    __tablename__ = "files"
+    id: Mapped[str] = mapped_column(
+        String, 
+        primary_key=True, 
+        default=lambda: str(uuid.uuid4())
+    )
+    repository_id: Mapped[str] = mapped_column(
+        String, 
+        ForeignKey("repositories.id"), 
+        nullable=False
+    )
+    path: Mapped[str] = mapped_column(String, nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+    # Relationships
+    repository: Mapped["Repository"] = relationship(back_populates="files")
+    symbols: Mapped[list["Symbol"]] = relationship(back_populates="file", cascade="all, delete-orphan")
+
+class Symbol(Base):
+    __tablename__ = "symbols"
+    id: Mapped[str] = mapped_column(
+        String, 
+        primary_key=True, 
+        default=lambda: str(uuid.uuid4())
+    )
+    file_id: Mapped[str] = mapped_column(
+        String, 
+        ForeignKey("files.id"), 
+        nullable=False
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    symbol_type: Mapped[str] = mapped_column(String, nullable=False)  # 'class', 'function', 'method', 'import'
+    parent_class: Mapped[str | None] = mapped_column(String, nullable=True)
+    start_line: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_line: Mapped[int] = mapped_column(Integer, nullable=False)
+    docstring: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+    # Relationship
+    file: Mapped["File"] = relationship(back_populates="symbols")

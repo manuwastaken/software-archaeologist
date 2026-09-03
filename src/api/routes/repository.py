@@ -1,8 +1,9 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from src.database.engine import get_db
-from src.database.models import Repository, Job
+from src.database.models import Repository, Job, File, Symbol
 from src.api.schemas.repository import RepositoryCreate, RepositoryResponse
+from src.api.schemas.ast import SymbolResponse, FileResponse
 from src.ingestion.repository import ingest_repository
 
 router = APIRouter(
@@ -39,3 +40,22 @@ def get_repository(repo_id: str, db: Session = Depends(get_db)):
     if not repo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found.")
     return repo
+
+
+@router.get("/{id}/files", response_model=list[FileResponse])
+def get_repository_files(id: str, db: Session = Depends(get_db)):
+    repo = db.query(Repository).filter(Repository.id == id).first()
+    if not repo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found.")
+    
+    files = db.query(File).filter(File.repository_id == id).all()
+    return files
+
+@router.get("/{id}/symbols", response_model=list[SymbolResponse])
+def get_repository_symbols(id: str, db: Session = Depends(get_db)):
+    repo = db.query(Repository).filter(Repository.id == id).first()
+    if not repo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found.")
+
+    symbols = db.query(Symbol).join(File).filter(File.repository_id == id).all()
+    return symbols
