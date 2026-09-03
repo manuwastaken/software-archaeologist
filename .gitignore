@@ -1,15 +1,22 @@
-# Virtual Environment & Environment Variables
+﻿# Virtual Environment & Environment Variables
 .venv/
 .env
 
 # Database Files
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 archaeon.db
 
 # Ingested Data & Cloned Repositories
 data/repos/
+chroma_data/
+test_chroma_data/
+
+# Scratch & Temporary Test Files
+temp_test.py
 
 # Python Cache & Testing
 __pycache__/

@@ -1,4 +1,7 @@
 ﻿from sqlalchemy.orm import Session
+from src.rag.vector_store import ChromaVectorStore
+from src.rag.chunker import CodeChunker
+from src.rag.embeddings import GeminiEmbeddingService
 from src.database.engine import SessionLocal
 from src.database.models import File, Repository, Job, Symbol
 from src.ingestion.git import git_clone, git_extract_metadata, locate_py
@@ -29,6 +32,8 @@ def ingest_repository(repo_id: str, job_id: str, repo_url: str):
 
         py_files = locate_py(destination_path)
         total_files = len(py_files)
+
+        all_chunks = []
 
         for i, py_file in enumerate(py_files, start=1):
             relative_path = pathlib.Path(py_file).relative_to(destination_path)
@@ -100,6 +105,11 @@ def ingest_repository(repo_id: str, job_id: str, repo_url: str):
             if symbols_to_create:
                 db.add_all(symbols_to_create)
                 db.commit()
+                db.refresh(file)
+
+            chunks = CodeChunker.chunk_file(file, destination_path)
+            all_chunks.extend(chunks)   
+
 
             # 7. Dynamic Progress Update
             if total_files > 0:
@@ -107,9 +117,17 @@ def ingest_repository(repo_id: str, job_id: str, repo_url: str):
                 if progress > job.progress:
                     job.progress = progress
                     db.commit()
-                
+
+        if all_chunks:
+            embedding_service = GeminiEmbeddingService()
+            v_store = ChromaVectorStore()
+            embeddings = embedding_service.embed_documents([c.content for c in all_chunks])
+            v_store.add_chunks(all_chunks, embeddings)
+            job.progress = 95
+            db.commit()
+            
         name, filecount, default_branch, clone_path = git_extract_metadata(destination_path, repo)
-        job.progress = 90
+        job.progress = 99
         db.commit()
 
         repo.name = name

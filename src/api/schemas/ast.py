@@ -11,9 +11,6 @@ class FileResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
-
 class SymbolResponse(BaseModel):
     id: str
     file_id: str

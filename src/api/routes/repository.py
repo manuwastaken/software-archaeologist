@@ -4,12 +4,15 @@ from src.database.engine import get_db
 from src.database.models import Repository, Job, File, Symbol
 from src.api.schemas.repository import RepositoryCreate, RepositoryResponse
 from src.api.schemas.ast import SymbolResponse, FileResponse
+from src.api.schemas.rag import QueryRequest, QueryResponse, Citation
 from src.ingestion.repository import ingest_repository
+from src.rag.service import RAGService
 
 router = APIRouter(
     prefix="/repositories",
     tags=["Repositories"]
 )
+rag_service = RAGService()
 
 @router.get("", response_model=list[RepositoryResponse])
 def get_repositories(db: Session = Depends(get_db)):
@@ -59,3 +62,24 @@ def get_repository_symbols(id: str, db: Session = Depends(get_db)):
 
     symbols = db.query(Symbol).join(File).filter(File.repository_id == id).all()
     return symbols
+
+@router.post("/{id}/query", response_model=QueryResponse)
+def query_repository(id: str, request: QueryRequest, db: Session = Depends(get_db)):
+    repo = db.query(Repository).filter(Repository.id == id).first()
+    if not repo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Repository not found."
+        )
+        
+    if repo.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Repository is not ready yet (status: {repo.status}). Please wait for ingestion to complete."
+        )
+    result = rag_service.answer_question(
+        repository_id=id,
+        question=request.question,
+        top_k=request.top_k
+    )
+    return result
