@@ -40,6 +40,80 @@ def test_get_nonexistent_repository():
     assert response.status_code == 404
     assert response.json()["detail"] == "Repository not found."
 
+
+def test_session_chat_endpoints_exist_and_return_history(monkeypatch):
+    """API-call regression test: exercises the real FastAPI routes for session creation, chat, and history retrieval."""
+    unique_id = str(uuid.uuid4())[:8]
+    repo_url = f"https://github.com/example/session-chat-repo-{unique_id}"
+
+    repo_response = client.post("/repositories", json={"url": repo_url})
+    assert repo_response.status_code == 201
+    repo_id = repo_response.json()["id"]
+
+    from src.database.engine import SessionLocal
+    from src.database.models import Repository
+
+    db = SessionLocal()
+    try:
+        repo = db.query(Repository).filter(Repository.id == repo_id).first()
+        assert repo is not None
+        repo.status = "completed"
+        db.commit()
+    finally:
+        db.close()
+
+    session_response = client.post(f"/repositories/{repo_id}/sessions")
+    assert session_response.status_code == 200
+    session_id = session_response.json()["id"]
+
+    fake_service = type(
+        "FakeService",
+        (),
+        {"chat": staticmethod(lambda repo_id, message, chat_history, top_k: {
+            "answer": "The repository implements this feature.",
+            "citations": [{
+                "file_path": "src/example.py",
+                "symbol_name": "feature_fn",
+                "start_line": 1,
+                "end_line": 10,
+                "similarity_score": 0.97
+            }],
+        })}
+    )()
+    monkeypatch.setattr("src.api.routes.repository.conversational_rag_service", fake_service)
+
+    chat_response = client.post(
+        f"/sessions/{session_id}/chat",
+        json={"message": "Tell me about the feature.", "top_k": 5},
+    )
+    assert chat_response.status_code == 200
+    payload = chat_response.json()
+    assert payload["session_id"] == session_id
+    assert payload["user_message"]["content"] == "Tell me about the feature."
+    assert payload["assistant_message"]["content"] == "The repository implements this feature."
+
+    history_response = client.get(f"/sessions/{session_id}/messages")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history) == 2
+    assert [item["role"] for item in history] == ["user", "assistant"]
+
+
+def test_get_all_jobs():
+    """Test GET /jobs returns all queued jobs created by repository submissions."""
+    unique_id = str(uuid.uuid4())[:8]
+    repo_url = f"https://github.com/example/jobs-list-repo-{unique_id}"
+
+    repo_response = client.post("/repositories", json={"url": repo_url})
+    assert repo_response.status_code == 201
+    repo_id = repo_response.json()["id"]
+
+    response = client.get("/jobs")
+    assert response.status_code == 200
+    jobs = response.json()
+    assert any(job["repository_id"] == repo_id for job in jobs)
+
+
 def test_get_nonexistent_job():
     """Test GET /jobs/{id} for non-existent ID returns 404."""
     response = client.get("/jobs/non-existent-uuid")

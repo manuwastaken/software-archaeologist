@@ -54,6 +54,11 @@ class Repository(Base):
     )
 
     files: Mapped[list["File"]] = relationship(back_populates="repository", cascade="all, delete-orphan")
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+    "ChatSession", 
+    back_populates="repository", 
+    cascade="all, delete-orphan"
+)
 
 
 # 3. Job Table
@@ -147,3 +152,58 @@ class Symbol(Base):
     )
     # Relationship
     file: Mapped["File"] = relationship(back_populates="symbols")
+
+
+class ChatSession(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
+    repository_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("repositories.id"),
+        nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    repository: Mapped["Repository"] = relationship("Repository", back_populates="chat_sessions")
+    messages: Mapped[list["Message"]] = relationship(
+        "Message", 
+        back_populates="chat_session", 
+        cascade="all, delete-orphan",
+        order_by="Message.created_at"
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(
+        String, 
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
+    session_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("sessions.id"),
+        nullable=False
+    )
+    role: Mapped[str] = mapped_column(String, nullable=False)  # "user" or "assistant"
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    citation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationship
+    chat_session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="messages")

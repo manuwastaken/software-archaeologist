@@ -3,7 +3,7 @@ from google import genai
 from src.rag.embeddings import GeminiEmbeddingService
 from src.rag.vector_store import ChromaVectorStore
 
-# Using Gemini 2.5 Flash for near-instant, high-reasoning code answers
+# Using Gemini 3.6 Flash for near-instant, high-reasoning code answers
 LLM_MODEL = "gemini-3.6-flash"
 
 
