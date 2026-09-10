@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from fastapi.testclient import TestClient
 from src.api.main import app
 
@@ -69,7 +69,7 @@ def test_session_chat_endpoints_exist_and_return_history(monkeypatch):
     fake_service = type(
         "FakeService",
         (),
-        {"chat": staticmethod(lambda repo_id, message, chat_history, top_k: {
+        {"chat": staticmethod(lambda repository_id, message, chat_history, top_k: {
             "answer": "The repository implements this feature.",
             "citations": [{
                 "file_path": "src/example.py",
@@ -119,3 +119,60 @@ def test_get_nonexistent_job():
     response = client.get("/jobs/non-existent-uuid")
     assert response.status_code == 404
     assert response.json()["detail"] == "Job not found."
+
+
+def test_session_chat_endpoints_with_agent_mode(monkeypatch):
+    """API-call test: exercises POST /sessions/{id}/chat with agent_mode=True using mocked ArchaeonAgentService."""
+    unique_id = str(uuid.uuid4())[:8]
+    repo_url = f"https://github.com/example/agent-chat-repo-{unique_id}"
+
+    repo_response = client.post("/repositories", json={"url": repo_url})
+    assert repo_response.status_code == 201
+    repo_id = repo_response.json()["id"]
+
+    from src.database.engine import SessionLocal
+    from src.database.models import Repository
+
+    db = SessionLocal()
+    try:
+        repo = db.query(Repository).filter(Repository.id == repo_id).first()
+        assert repo is not None
+        repo.status = "completed"
+        repo.clone_path = "data/repos/test-clone"
+        db.commit()
+    finally:
+        db.close()
+
+    session_response = client.post(f"/repositories/{repo_id}/sessions")
+    assert session_response.status_code == 200
+    session_id = session_response.json()["id"]
+
+    fake_agent_service = type(
+        "FakeAgentService",
+        (),
+        {"chat": staticmethod(lambda repository_id, db, clone_path, message, chat_history: {
+            "answer": "Archaeon investigated the codebase using ReAct tools.",
+            "citations": [{
+                "file_path": "src/analysis/ast_parser.py",
+                "symbol_name": "SymbolVisitor",
+                "start_line": 15,
+                "end_line": 45,
+                "similarity_score": 1.0,
+            }],
+        })}
+    )()
+    monkeypatch.setattr("src.api.routes.repository.agent_service", fake_agent_service)
+
+    chat_response = client.post(
+        f"/sessions/{session_id}/chat",
+        json={"message": "Where is SymbolVisitor defined?", "agent_mode": True},
+    )
+    assert chat_response.status_code == 200
+    payload = chat_response.json()
+    assert payload["session_id"] == session_id
+    assert payload["user_message"]["content"] == "Where is SymbolVisitor defined?"
+    assert payload["assistant_message"]["content"] == "Archaeon investigated the codebase using ReAct tools."
+    assert len(payload["citations"]) == 1
+    assert payload["citations"][0]["file_path"] == "src/analysis/ast_parser.py"
+    assert payload["citations"][0]["symbol_name"] == "SymbolVisitor"
+

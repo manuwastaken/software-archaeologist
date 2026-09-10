@@ -1,4 +1,4 @@
-﻿# Archaeon — AI Software Archaeologist
+# Archaeon — AI Software Archaeologist
 
 > An autonomous Code Intelligence and Semantic Retrieval system combining AST static analysis, vector embeddings, and grounded LLM reasoning to explain **how** and **why** software systems evolve.
 
@@ -56,12 +56,24 @@
 | **LangChain LCEL Pipeline** | `ConversationalRAGService` integrates history, retrieval, and grounded generation |
 | **Session Endpoints** | Create sessions, list, fetch history, and send chat messages |
 
+### Phase 5 — Autonomous ReAct Agent Layer (Completed)
+
+| Feature | Description |
+|---------|-------------|
+| **LangGraph State Machine** | Cyclic `StateGraph` running a ReAct (Reasoning + Acting) loop with `agent` and `ToolNode` workers |
+| **Server-Scoped Tool Factory** | Factory pattern using lexical closures to inject `repository_id`, database `Session`, and `clone_path` with zero tenant leakage |
+| **Codebase Search Tool** | Semantic similarity search across ChromaDB vector embeddings with formatted chunk metadata |
+| **Symbol Lookup Tool** | Deterministic SQLite query joining `symbols` and `files` for exact line boundaries, docstrings, and parent classes |
+| **File Read Tool** | Bounded local filesystem inspection with 100-line safety caps and path-traversal security |
+| **Citation Extraction** | Reconstructs line-level citations directly from intermediate `AIMessage.tool_calls` |
+| **Unified API Integration** | `POST /sessions/{session_id}/chat` with `agent_mode: true` toggle for autonomous investigations |
+
 ---
 
 ## System Architecture
 
 ```mermaid
-graph LR
+graph TD
     A["GitHub Repository"] -->|Git Clone| B["Repository Ingestion"]
     B -->|Extract Metadata| C["SQLite Database"]
     B -->|Parse Python Code| D["AST Parser"]
@@ -70,17 +82,24 @@ graph LR
     E -->|Generate Embeddings| F["Gemini Embeddings"]
     F -->|Store Vectors| G["ChromaDB"]
     
-    H["User Query"] -->|REST API| I["FastAPI Server"]
-    I -->|Search| G
-    G -->|Retrieve Chunks| J["RAG Service"]
-    J -->|Generate Answer| K["Gemini LLM"]
-    K -->|Response| I
-    I -->|Result with Citations| L["User"]
+    H["User Request"] -->|REST API| I["FastAPI Server"]
+    I -->|Query / Chat| J{"Mode Toggle"}
     
-    M["Chat Session"] -->|Store History| C
-    M -->|Multi-turn Context| N["ConversationalRAG"]
-    N -->|Rephrase Query| K
-    N -->|Grounded Answer| M
+    J -->|agent_mode: false| K["Conversational RAG (LCEL)"]
+    K -->|Retrieve Chunks| G
+    K -->|Synthesize| L["Gemini LLM"]
+    
+    J -->|agent_mode: true| M["LangGraph ReAct Agent"]
+    M -->|State: Messages| N["Agent Node (Gemini)"]
+    N -->|Tool Calls| O["ToolNode Execution"]
+    O -->|Semantic Search| G
+    O -->|Symbol Lookup| C
+    O -->|Bounded File Read| P["Cloned Repo Filesystem"]
+    O -->|Observations| N
+    
+    K -->|Grounded Answer + Citations| Q["Chat Sessions & Messages DB"]
+    N -->|Final Archaeological Answer| Q
+    Q -->|Response Payload| H
 ```
 
 ---
@@ -134,14 +153,14 @@ uvicorn src.api.main:app --reload
 | `POST` | `/repositories/{id}/sessions` | Create a new chat session for a completed repository |
 | `GET` | `/repositories/{id}/sessions` | List all chat sessions for a repository |
 | `GET` | `/sessions/{session_id}/messages` | Fetch the stored message history for a session |
-| `POST` | `/sessions/{session_id}/chat` | Ask a follow-up question using conversational memory and grounded retrieval |
+| `POST` | `/sessions/{session_id}/chat` | Multi-turn chat supporting standard RAG (`agent_mode: false`) or autonomous ReAct agent (`agent_mode: true`) |
 | `GET` | `/jobs/{id}` | Check background ingestion job progress (0% - 100%) |
 
 ---
 
 ## Running Tests
 
-**Unit Tests** (13 tests, local execution, zero API calls):
+**Unit Tests** (21 tests, local execution, zero API quota consumed):
 ```bash
 pytest tests/unit -v
 ```
@@ -175,6 +194,9 @@ Comprehensive architectural guides for each phase are located in `docs/concepts/
 - [LangChain Basics](docs/concepts/phase4_langchain_basics.md) — LCEL, message objects, and chat history
 - [Session Endpoints](docs/concepts/phase4_session_chat_endpoints.md) — Multi-turn conversation design
 
+#### Phase 5 — Autonomous ReAct Agents
+- [LangGraph & ReAct Agents](docs/concepts/phase5_agents_and_langgraph.md) — State machines, `ToolNode`, closures, and multi-agent patterns
+
 ---
 
 ## Project Roadmap
@@ -183,7 +205,7 @@ Comprehensive architectural guides for each phase are located in `docs/concepts/
 - [x] **Phase 2:** Code Intelligence (Python AST Parsing & Symbol Extraction)
 - [x] **Phase 3:** RAG System (Embeddings, ChromaDB Vector Search, & Grounded Q&A)
 - [x] **Phase 4:** LangChain Integration & Conversational Memory
-- [ ] **Phase 5:** Tool-Using Agent Layer
+- [x] **Phase 5:** Tool-Using Agent Layer (LangGraph ReAct Agent & Multi-Tool Execution)
 - [ ] **Phase 6:** Archaeology (Git History, Diffs, & GitHub Issues/PRs)
 - [ ] **Phase 7:** MLOps & Automation (n8n, Docker, & PostgreSQL + pgvector)
 - [ ] **Phase 8:** Evaluation Dataset, Benchmarks, & v1.0 Release

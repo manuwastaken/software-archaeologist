@@ -21,6 +21,7 @@ class MessageResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     top_k: int = 4
+    agent_mode: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

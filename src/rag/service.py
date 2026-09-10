@@ -2,6 +2,7 @@ import os
 from google import genai
 from src.rag.embeddings import GeminiEmbeddingService
 from src.rag.vector_store import ChromaVectorStore
+from src.rate_limiter import gemini_rate_limiter  # RATE LIMIT: see src/rate_limiter.py to adjust or disable
 
 # Using Gemini 3.6 Flash for near-instant, high-reasoning code answers
 LLM_MODEL = "gemini-3.6-flash"
@@ -74,6 +75,8 @@ Rules:
 """
 
         # 6. Call Gemini Flash
+        # RATE LIMIT: Remove or adjust in src/rate_limiter.py
+        gemini_rate_limiter.wait_if_needed()
         response = self.client.models.generate_content(
             model=LLM_MODEL,
             contents=prompt

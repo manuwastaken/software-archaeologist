@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Sequence
 from google import genai
 from google.genai import types
+from src.rate_limiter import gemini_rate_limiter  # RATE LIMIT: see src/rate_limiter.py to adjust or disable
 
 MODEL_NAME = "models/gemini-embedding-001"
 DEFAULT_BATCH_SIZE = 50
@@ -56,6 +57,8 @@ class GeminiEmbeddingService:
         sanitized = [t[:MAX_CHARS_PER_TEXT].strip() for t in batch_texts]
 
         def _call_api():
+            # RATE LIMIT: Remove or adjust in src/rate_limiter.py
+            gemini_rate_limiter.wait_if_needed()
             response = self.client.models.embed_content(
                 model=MODEL_NAME,
                 contents=sanitized,
@@ -75,6 +78,8 @@ class GeminiEmbeddingService:
         task_type = "RETRIEVAL_QUERY"
 
         def _call():
+            # RATE LIMIT: Remove or adjust in src/rate_limiter.py
+            gemini_rate_limiter.wait_if_needed()
             response = self.client.models.embed_content(
                 model=MODEL_NAME,
                 contents=query_text,

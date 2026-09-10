@@ -8,6 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.rag.embeddings import GeminiEmbeddingService
 from src.rag.vector_store import ChromaVectorStore
+from src.rate_limiter import gemini_rate_limiter  # RATE LIMIT: see src/rate_limiter.py to adjust or disable
 
 CHAT_MODEL = "gemini-3.6-flash"
 
@@ -136,6 +137,8 @@ class ConversationalRAGService:
         # Step 1: Condense follow-up query if chat history exists
         history_list = list(chat_history)
         if history_list:
+            # RATE LIMIT: Remove or adjust in src/rate_limiter.py
+            gemini_rate_limiter.wait_if_needed()
             search_query = self.rephrase_chain.invoke({
                 "chat_history": history_list,
                 "question": message
@@ -162,6 +165,8 @@ class ConversationalRAGService:
             context_str = "No relevant code snippets were found in this repository."
 
         # Step 4: Generate grounded answer via LCEL QA chain
+        # RATE LIMIT: Remove or adjust in src/rate_limiter.py
+        gemini_rate_limiter.wait_if_needed()
         answer = self.qa_chain.invoke({
             "context": context_str,
             "chat_history": history_list,

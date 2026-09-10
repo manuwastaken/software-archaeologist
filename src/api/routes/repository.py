@@ -1,7 +1,8 @@
-﻿import logging
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from langchain_core.messages import HumanMessage, AIMessage
+from src.agents.orchestrator import ArchaeonAgentService
 from src.api.schemas.chat import ChatRequest, ChatResponse, ChatSessionResponse, MessageResponse
 from src.database.engine import get_db
 from src.database.models import Message, Repository, Job, File, Symbol, ChatSession
@@ -23,12 +24,19 @@ session_router = APIRouter(
 )
 rag_service = RAGService()
 conversational_rag_service = None
+agent_service = None
 
 def get_conversational_rag_service():
     global conversational_rag_service
     if conversational_rag_service is None:
         conversational_rag_service = ConversationalRAGService()
     return conversational_rag_service
+
+def get_agent_service() -> ArchaeonAgentService:
+    global agent_service
+    if agent_service is None:
+        agent_service = ArchaeonAgentService()
+    return agent_service
 
 @router.get("", response_model=list[RepositoryResponse])
 def get_repositories(db: Session = Depends(get_db)):
@@ -178,13 +186,25 @@ def create_chat(session_id: str, request: ChatRequest, db: Session = Depends(get
             chat_history.append(AIMessage(content=message.content))
 
     try:
-        service = conversational_rag_service or get_conversational_rag_service()
-        result = service.chat(
-            repository_id=session.repository_id,
-            message=request.message,
-            chat_history=chat_history,
-            top_k=request.top_k,
-        )
+        if not request.agent_mode:
+            # Fast Single-Turn LCEL RAG (Phase 4)
+            service = conversational_rag_service or get_conversational_rag_service()
+            result = service.chat(
+                repository_id=session.repository_id,
+                message=request.message,
+                chat_history=chat_history,
+                top_k=request.top_k,
+            )
+        else:
+            # Autonomous ReAct Agent Loop (Phase 5)
+            service = agent_service or get_agent_service()
+            result = service.chat(
+                repository_id=session.repository_id,
+                db=db,
+                clone_path=repo.clone_path or f"data/repos/{repo.id}",
+                message=request.message,
+                chat_history=chat_history,
+            )
     except ValueError as exc:
         logger.error(f"Chat service configuration error: {exc}")
         raise HTTPException(
@@ -192,6 +212,14 @@ def create_chat(session_id: str, request: ChatRequest, db: Session = Depends(get
             detail="Chat service is unavailable. Please configure the required API credentials before using multi-turn chat."
         ) from exc
     except Exception as exc:
+        exc_str = str(exc).lower()
+        if "429" in exc_str or "resource_exhausted" in exc_str or "quota" in exc_str or "rate limit" in exc_str:
+            logger.warning(f"Rate limit reached: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Gemini API rate limit reached (5 requests per minute limit). Please wait 15-30 seconds before asking your next question."
+            ) from exc
+
         logger.error(f"Chat processing error: {type(exc).__name__}: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
