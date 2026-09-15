@@ -1,6 +1,7 @@
-﻿from fastapi import FastAPI
+from fastapi import FastAPI
 from src.database.engine import init_db
-from src.api.routes.repository import router as repositories_router, session_router
+from src.api.routes.repository import router as repositories_router
+from src.api.routes.session import session_router
 from src.api.routes.jobs import router as jobs_router
 
 # Initialize database tables on application startup

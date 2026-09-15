@@ -80,7 +80,7 @@ def test_session_chat_endpoints_exist_and_return_history(monkeypatch):
             }],
         })}
     )()
-    monkeypatch.setattr("src.api.routes.repository.conversational_rag_service", fake_service)
+    monkeypatch.setattr("src.api.routes.session.conversational_rag_service", fake_service)
 
     chat_response = client.post(
         f"/sessions/{session_id}/chat",
@@ -161,7 +161,7 @@ def test_session_chat_endpoints_with_agent_mode(monkeypatch):
             }],
         })}
     )()
-    monkeypatch.setattr("src.api.routes.repository.agent_service", fake_agent_service)
+    monkeypatch.setattr("src.api.routes.session.agent_service", fake_agent_service)
 
     chat_response = client.post(
         f"/sessions/{session_id}/chat",
