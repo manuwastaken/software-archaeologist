@@ -3,6 +3,7 @@ from langchain_core.tools import tool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.analysis.git_history import GitHistoryAnalyzer
 from src.database.models import File, Symbol
 from src.rag.embeddings import GeminiEmbeddingService
 from src.rag.vector_store import ChromaVectorStore
@@ -13,7 +14,7 @@ def build_archaeon_tools(
     db: Session,
     vector_store: ChromaVectorStore,
     embedding_service: GeminiEmbeddingService,
-    clone_path: str
+    clone_path: str,
 ):
     @tool
     def codebase_search(query: str, top_k: int = 4) -> str:
@@ -130,4 +131,85 @@ def build_archaeon_tools(
         except Exception as e:
             return f"Error reading file '{file_path}': {str(e)}"
 
-    return [codebase_search, symbol_lookup, file_read]
+    @tool
+    def git_commit_log(file_path: str | None, limit : int = 5) -> str:
+        """Allows the agent to answer questions like: "When was this file last changed and what features were committed recently?"""
+        analyzer = GitHistoryAnalyzer(clone_path)
+        try:
+            commits = analyzer.get_commits(file_path=file_path, limit = limit)
+            if commits == []:
+                return "No git commits found for the specified path."
+            commit_list = []
+            for c in commits:
+                hexsha = c.hexsha
+                author_name = c.author
+                date = c.authored_date
+                message = c.message
+
+                commit = (
+                    f"Short hash: {hexsha}\n"
+                    f"Author name: {author_name}\n"
+                    f"Commit date: {date}\n"
+                    f"Commit message: {message}"
+                )
+                commit_list.append(commit)
+                
+            return "\n\n".join(commit_list)
+        
+        except Exception as e:
+            return f"Error: {e}"
+
+    @tool
+    def git_line_blame(file_path:str, start_line: int, end_line: int) -> str:
+        """When an engineer asks: "Who wrote this function and why was this if-condition added?", the agent connects lines directly to historical commits."""
+        analyzer = GitHistoryAnalyzer(clone_path)
+        try:
+            if start_line < 1 or end_line < start_line:
+                return f"Error start line and end line doesnt make sense"
+
+            blames = analyzer.get_blame(file_path=file_path, start_line=start_line, end_line= end_line)
+            if blames == []:
+                return "No blame information available for this line range."
+            blame_list = []
+            for b in blames:
+                blame = (
+                    f"Lines {b.start_line}-{b.end_line}\n"
+                    f"Commit short hash: {b.commit_hash}\n"
+                    f"Author name: {b.author}\n"
+                    f"Commit Date: {b.date}\n"
+                    f"Commit summary: {b.summary}"
+                )
+                blame_list.append(blame)
+
+            return "\n\n".join(blame_list)
+
+        except Exception as e:
+            return f"Error:{e}"
+
+    @tool
+    def git_commit_diff(commit_hash: str, max_lines: int = 60) -> str:
+        """Allows the agent to look inside a commit and explain the exact code additions (+) and deletions (-)."""
+        analyzer = GitHistoryAnalyzer(clone_path)
+        try:
+            detail = analyzer.get_diff(commit_hash=commit_hash, max_lines=max_lines)
+            files = "\n".join(
+                f"- {file_path}"
+                for file_path in detail.files_changed
+            )
+
+            return (
+                f"Commit: {detail.hexsha}\n"
+                f"Author: {detail.author}\n"
+                f"Date: {detail.date}\n"
+                f"Message:\n{detail.message}\n\n"
+                f"Files changed:\n{files}\n\n"
+                f"Diff:\n{detail.diff_text}"
+            )
+
+        except ValueError as e:
+            return f"Error: {e}"
+
+        except Exception as e:
+            return f"Error: {e}"
+
+    return [codebase_search, symbol_lookup, file_read, git_commit_log, git_line_blame, git_commit_diff]
